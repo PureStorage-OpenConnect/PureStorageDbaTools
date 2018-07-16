@@ -1,7 +1,7 @@
 {
-    "id": "PureStorageDbaTools", <-- Repositry name
-    "filter": "microsoft powershell database devops",  <-- Choose one or more tags. microsoft cisco containers devops database
-    "image": "http://code.purestorage.com/images/25_dbatools.png", <--
-    "featured": 1, <-- do not change
-    "priority": 1  <-- do not change
+    "id": "PureStorageDbaTools",
+    "filter": "microsoft powershell database devops",
+    "image": "http://code.purestorage.com/images/25_dbatools.png",
+    "featured": 1,
+    "priority": 1
 } 
