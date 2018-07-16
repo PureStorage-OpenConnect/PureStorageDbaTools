@@ -1,6 +1,6 @@
 {
     "id": "PureStorageDbaTools",
-    "filter": "microsoft powershell database devops",
+    "filter": "database",
     "image": "http://code.purestorage.com/images/25_dbatools.png",
     "featured": 1,
     "priority": 1
