@@ -60,9 +60,9 @@ Invoke-PfaDbRefresh -RefreshDatabase tpch          `
 
 ## Restrictions
 
-- This code assumes that each database resides in its own volume, i.e. there is one window logical volume per database
-- The code does not work with database that reside on SQL Server fail over instances
-- The code assumes that the volumes used by all database reside on the same FlashArray
+- This code assumes that each database resides in a single FlashArray volume, i.e. there is one window logical volume per database
+- The code does not work with database(s) that reside on SQL Server fail over instances
+- All database(s) used when performing a database to database refresh reside on the same FlashArray
 
 ## Authors
 
@@ -90,4 +90,5 @@ Thanks to the community behind the dbatools module .
 ## Links
 
 https://www.powershellgallery.com/packages/PureStorageDbaTools
+
 https://www.purepowershellguy.com/?p=8431
