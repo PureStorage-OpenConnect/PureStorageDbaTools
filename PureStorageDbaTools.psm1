@@ -63,7 +63,7 @@ modules which are installed as part of the installation of this module.
 
 This function is available under the Apache 2.0 license, stipulated as follows:
 
-Copyright 2017 Pure Storage, Inc.
+Copyright 2018 Pure Storage, Inc.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
