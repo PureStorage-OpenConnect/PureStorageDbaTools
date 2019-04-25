@@ -5,7 +5,8 @@ SQL Server's dynamic data masking functionality. This functionality is currently
 
 - Invoke-PfaDbRefresh
 - New-PfaDbSnapshot
-- Enable-DataMasks
+- Invoke-StaticDataMasking
+- Invoke-DynamicDataMasking
 
 ## Getting Started
 
@@ -24,8 +25,6 @@ This module is built on top of both dbatools and the PureStoragePowerShellSDK mo
 ### Installation
 
 This module should always be downloaded and installed from the Powershell gallery as follows:
-
-PS> Save-Module -Name PureStorageDbaTools -Path <path>
 
 PS> Install-Module -Name PureStorageDbaTools
 
@@ -61,8 +60,9 @@ Invoke-PfaDbRefresh -RefreshDatabase tpch          `
 ## Restrictions
 
 - This code assumes that each database resides in a single FlashArray volume, i.e. there is one window logical volume per database
-- The code does not work with database(s) that reside on SQL Server fail over instances
+- The code does not work with database(s) that reside on SQL Server failover instances
 - All database(s) used when performing a database to database refresh reside on the same FlashArray
+- The static data masking functionality currently works with char, varchar and nvarchar columns only
 
 ## Authors
 
