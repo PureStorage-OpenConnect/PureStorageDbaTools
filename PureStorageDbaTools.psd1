@@ -12,7 +12,7 @@
 RootModule = 'PureStorageDbaTools.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.7.3.1'
+ModuleVersion = '1.7.4.6'
 
 # ID used to uniquely identify this module
 GUID = '190c8acb-d09f-4e24-99a6-5bb968373904'
@@ -66,7 +66,7 @@ RequiredModules = @('PureStoragePowerShellSDK', 'dbatools')
 # NestedModules = @()
 
 # Functions to export from this module
-FunctionsToExport = @('New-PfaDbSnapshot', 'Invoke-PfaDbRefresh', 'Enable-DataMasks')
+FunctionsToExport = @('New-PfaDbSnapshot', 'Invoke-PfaDbRefresh', 'Enable-DataMasks', 'Invoke-StaticDataMasking', 'Invoke-DynamicDataMasking')
 
 # Cmdlets to export from this module
 CmdletsToExport = '*'
