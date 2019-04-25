@@ -63,7 +63,7 @@ modules which are installed as part of the installation of this module.
 
 This function is available under the Apache 2.0 license, stipulated as follows:
 
-Copyright 2018 Pure Storage, Inc.
+Copyright 2017 Pure Storage, Inc.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -86,12 +86,10 @@ Enable-DataMasks
         ,[parameter(mandatory=$true)] [System.Management.Automation.PSCredential] $PfaCredentials
     )
 
-    $StartMs = Get-Date
-
     Write-Host "Connecting to array endpoint" -ForegroundColor Yellow
 
     try {
-        $FlashArray = New-PfaArray –EndPoint $PfaEndpoint -Credentials $PfaCredentials –IgnoreCertificateError
+        $FlashArray = New-PfaArray -EndPoint $PfaEndpoint -Credentials $PfaCredentials -IgnoreCertificateError
     }
     catch {
         $ExceptionMessage = $_.Exception.Message
@@ -129,7 +127,7 @@ Enable-DataMasks
     Write-Host "Determining snapshot target FlashArray volume" -ForegroundColor Yellow
 
     try {
-        $TargetVolume = Get-PfaVolumes -Array $FlashArray | Where-Object { $_.serial -eq $TargetDisk.SerialNumber } | Select name
+        $TargetVolume = Get-PfaVolumes -Array $FlashArray | Where-Object { $_.serial -eq $TargetDisk.SerialNumber } | Select-Object name
     }
     catch {
         $ExceptionMessage = $_.Exception.Message
@@ -164,8 +162,10 @@ A PowerShell function to refresh one or more SQL Server databases either from:
 - a source database directly
 
 This  function will detect and repair  orpaned users in refreshed databases and  optionally 
-apply data masking, based on the dynamic data masking functionality available in SQL Server
-version 2016 onwards.
+apply data masking, based on either:
+
+- the dynamic data masking functionality available in SQL Server version 2016 onwards,
+- static data masking built into dbatooils from version 0.9.725, refer to https://dbatools.io/mask/
 
 .PARAMETER RefreshDatabase
 The name of the database to refresh, note that it is assumed that source and target database(s) are named the same.
@@ -209,6 +209,15 @@ over CredSSP, however this does not support double-hop authentication, in which 
 Specifying  this optional  masks will  cause data  masks to  be applied , as  per the  dynamic data  masking feature first 
 introduced with SQL Server 2016, this results in this function invoking the Enable-DataMasks  function to be invoked.  For
 documentation on Enable-DataMasks, use the command Get-Help Enable-DataMasks [-Detailed].
+
+.PARAMETER ForceDestDbOffline
+Specifying this switch will cause refresh target databases for be forced offline via WITH ROLLBACK IMMEDIATE.
+
+.PARAMETER StaticDataMaskFile
+If this parameter is present and has a file path associated with it,  the data masking available in version 0.9.725 of the
+dbatools module  onwards will be applied  to the refreshed database.  The use of this is  contigent on the data  mask file
+being created and populated in the first place as per this blog post: https://dbatools.io/mask/ .
+
 .EXAMPLE
 Invoke-PfaDbRefresh -RefreshDatabase   tpch-no-compression  `
                     -RefreshSource     z-sql2016-devops-prd `
@@ -273,7 +282,31 @@ Invoke-PfaDbRefresh -$RefreshDatabase   tpch-no-compression `
                     -PfaCredentials     $Creds              `
                     -ApplyDataMasks
 
+Refresh multiple databases from the database specified by the SourceDatabase parameter residing on the instance specified by RefreshSource. 
+.EXAMPLE
+$StaticDataMaskFile = "D:\apps\datamasks\z-sql-prd.tpch-no-compression.tables.json"
+$Targets              = @("z-sql2016-devops-tst", "z-sql2016-devops-dev")
+Invoke-PfaDbRefresh -$RefreshDatabase   tpch-no-compression `
+                    -RefreshSource      z-sql-prd           `
+                    -DestSqlInstance    $Targets            `
+                    -PfaEndpoint        10.225.112.10       `
+                    -PfaCredentials     $Creds              `
+                    -StaticDataMaskFile $StaticDataMaskFile
+
 Refresh multiple databases from the database specified by the SourceDatabase parameter residing on the instance specified by RefreshSource and apply SQL Server dynamic data masking to each database.
+.EXAMPLE
+$StaticDataMaskFile = "D:\apps\datamasks\z-sql-prd.tpch-no-compression.tables.json"
+$Targets              = @("z-sql2016-devops-tst", "z-sql2016-devops-dev")
+Invoke-PfaDbRefresh -$RefreshDatabase   tpch-no-compression `
+                    -RefreshSource      z-sql-prd           `
+                    -DestSqlInstance    $Targets            `
+                    -PfaEndpoint        10.225.112.10       `
+                    -PfaCredentials     $Creds              `
+                    -ForceDestDbOffline                     `
+                    -StaticDataMaskFile $StaticDataMaskFile
+
+Refresh multiple databases from the database specified by the SourceDatabase parameter residing on the instance specified by RefreshSource and apply SQL Server dynamic data masking to each database.
+All databases to be refreshed are forced offline prior to their underlying FlashArray volumes being overwritten.
 .NOTES
                                Known Restrictions
                                ------------------
@@ -316,6 +349,7 @@ limitations under the License.
 .LINK
 https://www.powershellgallery.com/packages/PureStorageDbaTools
 https://www.purepowershellguy.com/?p=8431
+https://dbatools.io/mask/
 New-PfaDbSnapshot
 Enable-DataMasks
 #>
@@ -329,6 +363,8 @@ Enable-DataMasks
          ,[parameter(mandatory=$false)] [switch]                                    $RefreshFromSnapshot
          ,[parameter(mandatory=$false)] [switch]                                    $NoPsRemoting
          ,[parameter(mandatory=$false)] [switch]                                    $ApplyDataMasks
+         ,[parameter(mandatory=$false)] [switch]                                    $ForceDestDbOffline 
+         ,[parameter(mandatory=$false)] [string]                                    $StaticDataMaskFile
     )
 
     $StartMs = Get-Date
@@ -356,7 +392,7 @@ Enable-DataMasks
     Write-Host "Connecting to array endpoint" -ForegroundColor Yellow
 
     try {
-        $FlashArray = New-PfaArray –EndPoint $PfaEndpoint -Credentials $PfaCredentials –IgnoreCertificateError
+        $FlashArray = New-PfaArray -EndPoint $PfaEndpoint -Credentials $PfaCredentials -IgnoreCertificateError
     }
     catch {
         $ExceptionMessage = $_.Exception.Message
@@ -367,6 +403,13 @@ Enable-DataMasks
     $GetDbDisk = { param ( $Db ) 
         $DbDisk = Get-partition -DriveLetter $Db.PrimaryFilePath.Split(':')[0]| Get-Disk
         return $DbDisk
+    }
+
+    $GetVolumeLabel = {  param ( $Db )
+        Write-Verbose "Target database drive letter = $Db.PrimaryFilePath.Split(':')[0]"
+        $VolumeLabel = $(Get-Volume -DriveLetter $Db.PrimaryFilePath.Split(':')[0]).FileSystemLabel
+        Write-Verbose "Target database windows volume label = <$VolumeLabel>"
+        return $VolumeLabel
     }
 
     $Snapshots = $(Get-PfaAllVolumeSnapshots $FlashArray)
@@ -397,7 +440,7 @@ Enable-DataMasks
         }
 
         try {
-            $SourceVolume      = Get-PfaVolumes -Array $FlashArray | Where-Object { $_.serial -eq $SourceDisk.SerialNumber } | Select name
+            $SourceVolume      = Get-PfaVolumes -Array $FlashArray | Where-Object { $_.serial -eq $SourceDisk.SerialNumber } | Select-Object name
         }
         catch {
             $ExceptionMessage = $_.Exception.Message
@@ -418,6 +461,8 @@ Enable-DataMasks
             Return
         }
 
+        Write-Host "Obtaining target server name" -ForegroundColor Yellow
+
         try {
             $TargetServer  = (Connect-DbaInstance -SqlInstance $DestSqlInstance).ComputerNamePhysicalNetBIOS
         }
@@ -425,16 +470,14 @@ Enable-DataMasks
             Write-Error "Failed to determine target server name with: $ExceptionMessage"        
         }
 
-        $OfflineDestDisk = { param ( $DiskNumber, $Status ) 
-            Set-Disk -Number $DiskNumber -IsOffline $Status
-        }
-
         try {
             if ( $NoPsRemoting.IsPresent ) {
                 $DestDisk = Invoke-Command -ScriptBlock $GetDbDisk -ArgumentList $DestDb
+                $DestVolumeLabel = Invoke-Command -ScriptBlock $GetVolumeLabel -ArgumentList $DestDb
             }
             else {
                 $DestDisk = Invoke-Command -ComputerName $TargetServer -ScriptBlock $GetDbDisk -ArgumentList $DestDb
+                $DestVolumeLabel = Invoke-Command -ComputerName $TargetServer -ScriptBlock $GetVolumeLabel -ArgumentList $DestDb
             }
         }
         catch {
@@ -444,7 +487,11 @@ Enable-DataMasks
         }
 
         try {
-            $DestVolume        = Get-PfaVolumes -Array $FlashArray | Where-Object { $_.serial -eq $DestDisk.SerialNumber } | Select name
+            $DestVolume        = Get-PfaVolumes -Array $FlashArray | Where-Object { $_.serial -eq $DestDisk.SerialNumber } | Select-Object name
+            
+            if (!$DestVolume) {
+                throw "Failed to determine destination FlashArray volume, check that source and destination volumes are on the SAME array"
+            } 
         }
         catch {
             $ExceptionMessage = $_.Exception.Message
@@ -459,7 +506,13 @@ Enable-DataMasks
         Write-Host "Offlining destination database" -ForegroundColor Yellow
 
         try {
-            $DestDb.SetOffline()
+            if ( $ForceDestDbOffline.IsPresent ) {
+                $ForceDatabaseOffline = "ALTER DATABASE [$RefreshDatabase] SET OFFLINE WITH ROLLBACK IMMEDIATE"
+                Invoke-DbaQuery -ServerInstance $DestSqlInstance -Database $RefreshDatabase -Query $ForceDatabaseOffline
+            }
+            else {
+                $DestDb.SetOffline()
+            }
         }
         catch {
             $ExceptionMessage = $_.Exception.Message
@@ -514,12 +567,18 @@ Enable-DataMasks
         Write-Host " "
         Write-Host "Onlining destination Windows volume" -ForegroundColor Yellow
 
+        $SetVolumeLabel = { param ( $Db, $DestVolumeLabel )
+            Set-Volume -DriveLetter $Db.PrimaryFilePath.Split(':')[0] -NewFileSystemLabel $DestVolumeLabel
+        }
+
         try {
             if ( $NoPsRemoting.IsPresent.Equals( $true ) ) {
                 Invoke-Command -ScriptBlock $OfflineDestDisk -ArgumentList $DestDisk.Number, $False
+                Invoke-Command -ScriptBlock $SetVolumeLabel -ArgumentList $DestDb, $DestVolumeLabel
             }
             else {
                 Invoke-Command -ComputerName $TargetServer -ScriptBlock $OfflineDestDisk -ArgumentList $DestDisk.Number, $False
+                Invoke-Command -ComputerName $TargetServer -ScriptBlock $SetVolumeLabel -ArgumentList $DestDb, $DestVolumeLabel
             }
         }
         catch {
@@ -538,15 +597,36 @@ Enable-DataMasks
             Write-Error "Failed to online database $Database with: $ExceptionMessage"
             Return
         }
-
+ 
         if ($ApplyDataMasks.IsPresent) {
-            Write-Host "Applying data masks to $RefreshDatabase on SQL Server instance $DestSqlInstance" -ForegroundColor Yellow
-            Enable-DataMasks -SqlInstance $DestSqlInstance -Database $RefreshDatabase
-            Write-Host "Data masking has been applied" -ForegroundColor Yellow
+            Write-Host "Applying SQL Server dynamic data masks to $RefreshDatabase on SQL Server instance $DestSqlInstance" -ForegroundColor Yellow
+        
+            try {
+                Invoke-DynamicDataMasking -SqlInstance $DestSqlInstance -Database $RefreshDatabase
+                Write-Host "SQL Server dynamic data masking has been applied" -ForegroundColor Yellow
+            }
+            catch {
+                $ExceptionMessage = $_.Exception.Message
+                Write-Error "Failed to apply SQL Server dynamic data masks to $Database on $DestSqlInstance with: $ExceptionMessage"
+                Return    
+            }
+        }
+        elseif ([System.IO.File]::Exists($StaticDataMaskFile)) {
+            Write-Host "Applying static data masking to $RefreshDatabase on SQL Server instance $DestSqlInstance" -ForegroundColor Yellow
+
+            try {
+                Invoke-StaticDataMasking -SqlInstance $DestSqlInstance -Database $RefreshDatabase -DataMaskFile $StaticDataMaskFile
+                Write-Host "Static data masking has been applied" -ForegroundColor Yellow
+            }
+            catch {
+                $ExceptionMessage = $_.Exception.Message
+                Write-Error "Failed to apply static data masking to $Database on $DestSqlInstance with: $ExceptionMessage"
+                Return    
+            }
         }
 
         Write-Host "Repairing orphaned users" -ForegroundColor Yellow      
-        Repair-DbaOrphanUser -SqlInstance $DestSqlInstance -Database $RefreshDatabase
+        Repair-DbaDbOrphanUser -SqlInstance $DestSqlInstance -Database $RefreshDatabase
     }
     
     $EndMs = Get-Date
@@ -562,14 +642,23 @@ Enable-DataMasks
 
 function Enable-DataMasks
 {
+    param(
+        [parameter(mandatory=$true)]  [string] $SqlInstance   
+       ,[parameter(mandatory=$true)]  [string] $Database       
+    )
+    
+    Write-Warning "Enable-DataMasks has been deprecated, use Invoke-DynamicDataMasking instead"
+}
+function Invoke-DynamicDataMasking
+{
 <#
 .SYNOPSIS
 A PowerShell function to apply data masks to database columns using the SQL Server dynamic data masking feature.
 
 .DESCRIPTION
-This PowerShell function uses the information stored in the extended properties of a database,
-sys.extended_properties.name = 'DATAMASK' to obtain the function used to apply the data mask to the properties
-associated column. This function currerntly works for columns using the following data types:
+This function uses the information stored in the extended properties of a database:
+sys.extended_properties.name = 'DATAMASK' to obtain the dynamic data masking function to apply 
+at column level. Columns of the following data type are currently supported:
 
 - int
 - bigint
@@ -596,8 +685,8 @@ The SQL Server instance of the database that data masking is to be applied to
 The database that data masking is to be applied to
 
 .EXAMPLE
-Enable-DataMasks -SqlInstance Z-STN-WIN2016-A\DEVOPSDEV `
-                 -Database    tpch-no-compression
+Invoke-DynamicDataMasking -SqlInstance Z-STN-WIN2016-A\DEVOPSDEV `
+                          -Database    tpch-no-compression
 
 .NOTES
                     Obtaining The PureStorageDbaTools Module
@@ -689,5 +778,114 @@ END;
 
     Invoke-DbaSqlQuery -SqlInstance $SqlInstance -Database $Database -Query $sql
 }
+function Invoke-StaticDataMasking
+{
+<#
+.SYNOPSIS
+A PowerShell function to statically mask data in char, varchar and/or nvarchar columns using a MD5 hashing function.
 
-Export-ModuleMember -Function @('Invoke-PfaDbRefresh', 'New-PfaDbSnapshot', 'Enable-DataMasks')
+.DESCRIPTION
+This PowerShell function uses as input a JSON file created by calling the New-DbaDbMaskingConfig PowerShell function.
+Data in the columns specified in this file which are of the type char, varchar or nvarchar are envrypted using a MD5
+hash.
+
+.PARAMETER SqlInstance
+The SQL Server instance of the database that static data masking is to be applied to
+
+.PARAMETER Database
+The database that static data masking is to be applied to
+
+.PARAMETER DataMaskFile
+Absolute path to the JSON file generated by invoking New-DbaDbMaskingConfig. The file can be subsequently editted by
+hand to suit the data masking requirements of this this function's user
+
+.EXAMPLE
+Invoke-StaticDataMasking -SqlInstance  Z-STN-WIN2016-A\DEVOPSDEV `
+                         -Database     tpch-no-compression `
+                         -DataMaskFile 'C:\Users\devops\Documents\tpch-no-compression.tables.json'
+.NOTES
+                    Obtaining The PureStorageDbaTools Module
+                    ----------------------------------------
+
+This function is part of the PureStorageDbaTools module, it is recommend
+that the module is always obtained from the PowerShell gallery:
+
+https://www.powershellgallery.com/packages/PureStorageDbaTools
+
+Note that it has dependencies on the dbatools and PureStoragePowerShellSDK
+modules which are installed as part of the installation of this module.
+
+                                    Licence
+                                    -------
+
+This function is available under the Apache 2.0 license, stipulated as follows:
+
+Copyright 2017 Pure Storage, Inc.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on  an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+.LINK
+https://www.powershellgallery.com/packages/PureStorageDbaTools
+https://docs.microsoft.com/en-us/sql/relational-databases/security/dynamic-data-masking?view=sql-server-2017
+New-PfaDbSnapshot
+Invoke-PfaDbRefresh
+#>
+param(
+         [parameter(mandatory=$true)]  [string] $SqlInstance   
+        ,[parameter(mandatory=$true)]  [string] $Database       
+        ,[parameter(mandatory=$true)]  [string] $DataMaskFile       
+    )
+
+    if ($DataMaskFile.ToString().StartsWith('http')) {
+        $tables = Invoke-RestMethod -Uri $DataMaskFile
+    } else {
+        # Check if the destination is accessible
+        if (-not (Test-Path -Path $DataMaskFile)) {
+            Write-Error "Could not find data mask config file $DataMaskFile"
+            Return
+        }
+    }
+
+    # Get all the items that should be processed
+    try {
+        $tables = Get-Content -Path $DataMaskFile -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        Write-Error "Could not parse masking config file: $DataMaskFile" -ErrorRecord $_
+    }
+
+    foreach ($tabletest in $tables.Tables) {
+        if ($Table -and $tabletest.Name -notin $Table) {
+            continue
+        }
+    
+        $ColumnIndex = 0
+        $UpdateStatement = ""
+    
+        foreach ($columntest in $tabletest.Columns) {
+            if ($columntest.ColumnType -notin 'varchar', 'char', 'nvarchar') {
+                Write-Error "$columntest.ColumnType is not supported, please remove the column $columntest.Name from the $tabletest.Name table"
+                Return
+            }
+
+            if ($ColumnIndex -eq 0) {
+                $UpdateStatement =  'UPDATE ' + $tabletest.Name + ' SET ' + $columntest.Name + ' = SUBSTRING(CONVERT(VARCHAR, HASHBYTES(' + '''' + 'MD5' + '''' + ', ' + $columntest.Name + '), 1), 1, ' + $columntest.MaxValue + ')' 
+            }
+            else {
+                $UpdateStatement += ', ' + $columntest.Name + ' = SUBSTRING(CONVERT(VARCHAR, HASHBYTES(' + '''' + 'MD5' + '''' + ', ' + $columntest.Name + '), 1), 1, ' + $columntest.MaxValue + ')'
+            }
+            
+            $ColumnIndex += 1
+        }
+
+        Write-Verbose "Statically masking table $tabletest.Name using $UpdateStatement"
+        Invoke-DbaQuery -ServerInstance $SqlInstance -Database $Database -Query $UpdateStatement
+    }            
+}
+
+Export-ModuleMember -Function @('Invoke-PfaDbRefresh', 'New-PfaDbSnapshot', 'Enable-DataMasks', 'Invoke-DynamicDataMasking', 'Invoke-StaticDataMasking')
