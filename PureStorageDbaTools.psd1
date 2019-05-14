@@ -12,7 +12,7 @@
 RootModule = 'PureStorageDbaTools.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.7.4.6'
+ModuleVersion = '1.7.4.7'
 
 # ID used to uniquely identify this module
 GUID = '190c8acb-d09f-4e24-99a6-5bb968373904'
@@ -48,7 +48,7 @@ Description = 'Tools for refreshing SQL Server databases via FlashArray crash co
 # ProcessorArchitecture = ''
 
 # Modules that must be imported into the global environment prior to importing this module
-RequiredModules = @('PureStoragePowerShellSDK', 'dbatools')
+RequiredModules = @('PureStoragePowerShellSDK', 'dbatools', 'PSWriteColor')
 
 # Assemblies that must be loaded prior to importing this module
 # RequiredAssemblies = @()
