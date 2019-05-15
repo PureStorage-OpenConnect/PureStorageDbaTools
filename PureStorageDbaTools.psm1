@@ -86,8 +86,15 @@ Enable-DataMasks
         ,[parameter(mandatory=$true)] [System.Management.Automation.PSCredential] $PfaCredentials
     )
 
+    $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+
+    if ( ! $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) ) {
+        Write-Error "This function needs to be invoked within a PowerShell session with elevated admin rights"
+        Return
+    }
+
     try {
-        $Global:FlashArray = New-PfaArray -EndPoint $PfaEndpoint -Credentials $PfaCredentials -IgnoreCertificateError
+        $FlashArray = New-PfaArray -EndPoint $PfaEndpoint -Credentials $PfaCredentials -IgnoreCertificateError
     }
     catch {
         $ExceptionMessage = $_.Exception.Message
@@ -98,7 +105,7 @@ Enable-DataMasks
     Write-Colour -Text "FlashArray endpoint       : ", "CONNECTED" -Color Yellow, Green
 
     try {
-        $DestDb           = Get-DbaDatabase -sqlinstance $SqlInstance -Database $Database
+        $DestDb = Get-DbaDatabase -sqlinstance $SqlInstance -Database $Database
     }
     catch {
         $ExceptionMessage = $_.Exception.Message
@@ -107,20 +114,32 @@ Enable-DataMasks
     }
 
     Write-Colour -Text "Target SQL Server instance: ", $SqlInstance, " - ", "CONNECTED" -Color Yellow, Green, Green, Green
+    Write-Colour -Text "Target windows drive      : ", $DestDb.PrimaryFilePath.Split(':')[0] -Color Yellow, Green
+
+    try {
+        $TargetServer  = (Connect-DbaInstance -SqlInstance $SqlInstance).ComputerNamePhysicalNetBIOS
+    }
+    catch {
+        Write-Error "Failed to determine target server name with: $ExceptionMessage"        
+    }
+
+    Write-Colour -Text "Target SQL Server host    : ", $TargetServer -ForegroundColor Yellow, Green
 
     $GetDbDisk = { param ( $Db ) 
-        $DbDisk = Get-partition -DriveLetter $Db.PrimaryFilePath.Split(':')[0]| Get-Disk
+        $DbDisk = Get-Partition -DriveLetter $Db.PrimaryFilePath.Split(':')[0]| Get-Disk
         return $DbDisk
     }
     
     try {
-        $TargetDisk = Invoke-Command -ScriptBlock $GetDbDisk -ArgumentList $DestDb
+        $TargetDisk = Invoke-Command -ComputerName $TargetServer -ScriptBlock $GetDbDisk -ArgumentList $DestDb
     }
     catch {
         $ExceptionMessage  = $_.Exception.Message
         Write-Error "Failed to determine the windows disk snapshot target with: $ExceptionMessage"
         Return
     }
+
+    Write-Colour -Text "Target disk serial number : ", $TargetDisk.SerialNumber -Color Yellow, Green
 
     try {
         $TargetVolume = Get-PfaVolumes -Array $FlashArray | Where-Object { $_.serial -eq $TargetDisk.SerialNumber } | Select-Object name
@@ -131,10 +150,12 @@ Enable-DataMasks
         Return
     }
 
+    $SnapshotSuffix = $SqlInstance.Replace('\', '-') + '-' + $Database + '-' +  $(Get-Date).Hour +  $(Get-Date).Minute +  $(Get-Date).Second
     Write-Colour -Text "Snapshot target Pfa volume: ", $TargetVolume.name -Color Yellow, Green
+    Write-Colour -Text "Snapshot suffix           : ", $SnapshotSuffix -Color Yellow, Green
 
     try {
-        New-PfaVolumeSnapshots -Array $FlashArray -Sources $TargetVolume.name
+        New-PfaVolumeSnapshots -Array $FlashArray -Sources $TargetVolume.name -Suffix $SnapshotSuffix
     }
     catch {
         $ExceptionMessage = $_.Exception.Message
@@ -188,7 +209,7 @@ function DbRefresh
     Write-Colour -Text "Target SQL Server host    : ", $TargetServer -ForegroundColor Yellow, Green
  
     $GetDbDisk = { param ( $Db ) 
-        $DbDisk = Get-partition -DriveLetter $Db.PrimaryFilePath.Split(':')[0]| Get-Disk
+        $DbDisk = Get-Partition -DriveLetter $Db.PrimaryFilePath.Split(':')[0]| Get-Disk
         return $DbDisk
     }
 
@@ -334,11 +355,12 @@ function DbRefresh
         }
     }
     elseif ([System.IO.File]::Exists($StaticDataMaskFile)) {
-        Write-Host "Applying static data masking to $RefreshDatabase on SQL Server instance $DestSqlInstance" -ForegroundColor Yellow
+        Write-Color -Text "Static data mask target   : ", $DestSqlInstance, " - ", $RefreshDatabase -Color Yellow, Green, Green, Green
 
         try {
             Invoke-StaticDataMasking -SqlInstance $DestSqlInstance -Database $RefreshDatabase -DataMaskFile $StaticDataMaskFile
-            Write-Host "Static data masking has been applied" -ForegroundColor Yellow
+            Write-Color -Text "Static data masking       : ", "APPLIED" -ForegroundColor Yellow, Green
+
         }
         catch {
             $ExceptionMessage = $_.Exception.Message
@@ -347,7 +369,7 @@ function DbRefresh
         }
     }
 
-    Repair-DbaDbOrphanUser -SqlInstance $DestSqlInstance -Database $RefreshDatabase
+    Repair-DbaDbOrphanUser -SqlInstance $DestSqlInstance -Database $RefreshDatabase | Out-Null
     Write-Color -Text "Orphaned users            : ", "REPAIRED" -ForegroundColor Yellow, Green
 }
 
@@ -392,6 +414,10 @@ This parameter is MANDATORY.
 .PARAMETER PfaCredentials
 A PSCredential object containing the username and password of the FlashArray to connect to. For instruction on how
 to store and retrieve these from an encrypted file, refer to this article https://www.purepowershellguy.com/?p=8431
+
+.PARAMETER PollJobInterval
+Interval at which background job status is poll, if this is ommited polling will not take place. Note that this parameter
+is not applicable is the PromptForSnapshot switch is specified.
 
 .PARAMETER PromptForSnapshot
 This is an optional flag that if specified will result in a list of snapshots  being displayed for the database volume on
@@ -511,6 +537,20 @@ Invoke-PfaDbRefresh -$RefreshDatabase   tpch-no-compression `
 
 Refresh multiple databases from the database specified by the SourceDatabase parameter residing on the instance specified by RefreshSource and apply SQL Server dynamic data masking to each database.
 All databases to be refreshed are forced offline prior to their underlying FlashArray volumes being overwritten.
+.EXAMPLE
+$StaticDataMaskFile = "D:\apps\datamasks\z-sql-prd.tpch-no-compression.tables.json"
+$Targets              = @("z-sql2016-devops-tst", "z-sql2016-devops-dev")
+Invoke-PfaDbRefresh -$RefreshDatabase   tpch-no-compression `
+                    -RefreshSource      z-sql-prd           `
+                    -DestSqlInstance    $Targets            `
+                    -PfaEndpoint        10.225.112.10       `
+                    -PfaCredentials     $Creds
+                    -PollJobInterval    10              `
+                    -ForceDestDbOffline                     `
+                    -StaticDataMaskFile $StaticDataMaskFile
+
+Refresh multiple databases from the database specified by the SourceDatabase parameter residing on the instance specified by RefreshSource and apply SQL Server dynamic data masking to each database.
+All databases to be refreshed are forced offline prior to their underlying FlashArray volumes being overwritten. Poll the status of the refresh jobs once every 10 seconds.
 .NOTES
                                Known Restrictions
                                ------------------
@@ -563,6 +603,7 @@ Enable-DataMasks
          ,[parameter(mandatory=$true)]  [string[]]                                  $DestSqlInstances   
          ,[parameter(mandatory=$true)]  [string]                                    $PfaEndpoint       
          ,[parameter(mandatory=$true)]  [System.Management.Automation.PSCredential] $PfaCredentials
+         ,[parameter(mandatory=$false)] [int]                                       $PollJobInterval
          ,[parameter(mandatory=$false)] [switch]                                    $PromptForSnapshot
          ,[parameter(mandatory=$false)] [switch]                                    $RefreshFromSnapshot
          ,[parameter(mandatory=$false)] [switch]                                    $NoPsRemoting
@@ -660,7 +701,7 @@ Enable-DataMasks
         Foreach($DestSqlInstance in $DestSqlInstances) {
             $JobName = "DbRefresh" + $JobNumber
             Write-Colour -Text "Refresh background job    : ", $JobName, " - ", "PROCESSING" -Color Yellow, Green, Green, Green
-            If ($RefreshFromSnapshot.IsPresent) {
+            If ( $RefreshFromSnapshot.IsPresent ) {
                 Start-Job -Name $JobName -ScriptBlock $Function:DbRefresh -argumentlist $DestSqlInstance   , `
                                                                                         $RefreshDatabase   , `
                                                                                         $PfaEndpoint       , `
@@ -688,8 +729,14 @@ Enable-DataMasks
         }
 
         While (Get-Job -State Running | Where-Object {$_.Name.Contains("DbRefresh")}) {
-            Start-Sleep -Seconds 1
-        }
+            if ($PSBoundParameters.ContainsKey('PollJobInterval')) {
+                Get-Job -State Running | Where-Object {$_.Name.Contains("DbRefresh")} | Receive-Job
+                Start-Sleep -Seconds $PollJobInterval        
+            }
+            else {
+                Start-Sleep -Seconds 1
+            }
+        }   
 
         Write-Colour -Text "Refresh background jobs   : ", "COMPLETED" -Color Yellow, Green
 
@@ -972,7 +1019,7 @@ param(
         }
 
         Write-Verbose "Statically masking table $tabletest.Name using $UpdateStatement"
-        Invoke-DbaQuery -ServerInstance $SqlInstance -Database $Database -Query $UpdateStatement
+        Invoke-DbaQuery -ServerInstance $SqlInstance -Database $Database -Query $UpdateStatement -QueryTimeout 999999 
     }            
 }
 
