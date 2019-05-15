@@ -32,11 +32,11 @@ PS> Install-Module -Name PureStorageDbaTools
 Once installed, full documentation including example can be obtained on the three functions that the module contains via the Get-Help 
 cmdlet:
 ```
-1. Get-Help  Invoke-PfaDbRefresh 
+Get-Help  Invoke-PfaDbRefresh 
 ```
 will provide basic information on how the function can be used
 ```
-2.  Get-Help  Invoke-PfaDbRefresh -Detailed
+Get-Help  Invoke-PfaDbRefresh -Detailed
 ```
 will provide detailed information on how the function can be used including examples. Both the Invoke-PfaDbRefresh and New-PfaDbSnapshot  functions use powershell credentials  objects in order to comply with the security best practices and polices mandated by the Powershell gallery .
 
