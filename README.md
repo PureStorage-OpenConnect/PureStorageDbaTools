@@ -1,18 +1,17 @@
 # PureStorageDbaTools
 
-The module contains powershell functions to refresh SQL Server databases, create snapshots of SQL Server databases and obfuscate sensitive data via 
-SQL Server's dynamic data masking functionality. This functionality is currently provided by three functions: 
-
+The module contains powershell functions to refresh SQL Server databases, create snapshots of SQL Server databases and obfuscate sensitive data via SQL Server's dynamic data masking functionality. This functionality is currently provided by three functions: 
+```
 - Invoke-PfaDbRefresh
 - New-PfaDbSnapshot
 - Invoke-StaticDataMasking
 - Invoke-DynamicDataMasking
-
+```
 ## Getting Started
 
 ### Prerequisites
 
-This module is built on top of both dbatools and the PureStoragePowerShellSDK modules, as such it has the following prerequisites:
+This module is built on top of the dbatools and the PureStoragePowerShellSDK PowerShell modules, as such it has the following prerequisites:
 
 - Windows PowerShell 3.0 or higher .
 - .NET Framework 4.5 .
@@ -24,28 +23,27 @@ This module is built on top of both dbatools and the PureStoragePowerShellSDK mo
 
 ### Installation
 
-This module should always be downloaded and installed from the Powershell gallery as follows:
-
+PureStorageDbaTools should always be downloaded and installed from the Powershell gallery as follows:
+```
 PS> Install-Module -Name PureStorageDbaTools
-
+```
 ### Usage
 
-Once installed full documentation including example can be obtained on the three functions that the module contains via the Get-Help 
+Once installed, full documentation including example can be obtained on the three functions that the module contains via the Get-Help 
 cmdlet:
-
+```
 1. Get-Help  Invoke-PfaDbRefresh 
-
+```
 will provide basic information on how the function can be used
-
+```
 2.  Get-Help  Invoke-PfaDbRefresh -Detailed
+```
+will provide detailed information on how the function can be used including examples. Both the Invoke-PfaDbRefresh and New-PfaDbSnapshot  functions use powershell credentials  objects in order to comply with the security best practices and polices mandated by the Powershell gallery .
 
-will provide detailed information on how the function can be used including examples. Both the Invoke-PfaDbRefresh and New-PfaDbSnapshot  
-functions use powershell credentials objects in order to comply with the security best practices and polices mandated by the Powershell gallery .
-
-If we then call the  Invoke-PfaDbRefresh, in this example the tpch-no-compression database on  Z-STN-WIN2016-A\DEVOPSPRD is being used to refresh  Z-STN-WIN2016-A\DEVOPSDEV1 and Z-STN-WIN2016-A\DEVOPSDEV2, the -ApplyDataMasks switch will cause the data mask to be applied:
+Calling  Invoke-PfaDbRefresh, using the tpch-no-compression database on  Z-STN-WIN2016-A\DEVOPSPRD is being used to refresh  Z-STN-WIN2016-A\DEVOPSDEV1 and Z-STN-WIN2016-A\DEVOPSDEV2, the -ApplyDataMasks switch will cause the data masks to be applied:
 
 ### Examples
-
+```
 $Pwd   = Get-Content ‘C:\Temp\Secure-Credentials.txt’ | ConvertTo-SecureString
 $Creds = New-Object System.Management.Automation.PSCredential ("pureuser", $pwd)
 $Targets = @('DEVOPSDEV1', 'DEVOPSDEV2')
@@ -56,13 +54,13 @@ Invoke-PfaDbRefresh -RefreshDatabase tpch          `
                     -PfaEndpoint     10.223.112.05 `
                     -PfaCredentials  $Creds `
                     -ApplyDataMasks
-
+```
 ## Restrictions
 
 - This code assumes that each database resides in a single FlashArray volume, i.e. there is one window logical volume per database
 - The code does not work with database(s) that reside on SQL Server failover instances
 - All database(s) used when performing a database to database refresh reside on the same FlashArray
-- The static data masking functionality currently works with char, varchar and nvarchar columns only
+- The static data masking functionality currently works with char, varchar, nvarchar, int and bigint columns only
 
 ## Authors
 
