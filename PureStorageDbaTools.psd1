@@ -12,7 +12,7 @@
 RootModule = 'PureStorageDbaTools.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.7.4.7'
+ModuleVersion = '1.7.4.8'
 
 # ID used to uniquely identify this module
 GUID = '190c8acb-d09f-4e24-99a6-5bb968373904'
