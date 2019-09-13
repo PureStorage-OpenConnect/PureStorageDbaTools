@@ -1,6 +1,6 @@
-# PureStorageDbaTools
+# Pure Storage DBA Tools PowerShell Module
 
-The module contains powershell functions to refresh SQL Server databases, create snapshots of SQL Server databases and obfuscate sensitive data via SQL Server's dynamic data masking functionality. This functionality is currently provided by three functions: 
+This repository provides a PowerShell module with functions to refresh SQL Server databases, create snapshots of SQL Server databases and obfuscate sensitive data via SQL Server's dynamic data masking functionality. This functionality is currently provided by three functions: 
 ```
 - Invoke-PfaDbRefresh
 - New-PfaDbSnapshot
@@ -23,7 +23,7 @@ This module is built on top of the dbatools and the PureStoragePowerShellSDK Pow
 
 ### Installation
 
-PureStorageDbaTools should always be downloaded and installed from the Powershell gallery as follows:
+PureStorageDbaTools should always be downloaded and installed from the PowerShell gallery as follows:
 ```
 PS> Install-Module -Name PureStorageDbaTools
 ```

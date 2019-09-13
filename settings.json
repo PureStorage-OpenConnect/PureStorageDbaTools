@@ -1,5 +1,6 @@
 {
     "id": "PureStorageDbaTools",
+    "name": "DBA Tools PowerShell Module",
     "filter": "database",
     "image": "https://code.purestorage.com/images/25_dbatools.png",
     "featured": 1,
